@@ -50,7 +50,7 @@ pub mod tagger;
 
 pub use crfrs;
 pub use error::{Error, Result};
-pub use tagger::NerTagger;
+pub use tagger::{extract_entities, NerTagger};
 
 /// Default NER labels in BIO encoding.
 pub const DEFAULT_LABELS: &[&str] = &[

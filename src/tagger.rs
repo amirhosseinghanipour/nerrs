@@ -69,6 +69,28 @@ impl NerTagger {
         Ok(words.iter().zip(tags).map(|(w, t)| (w.to_string(), t)).collect())
     }
 
+    /// Downloads a model from the Hugging Face Hub and loads it.
+    ///
+    /// Requires the `hf-hub` feature.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # #[cfg(feature = "hf-hub")]
+    /// # {
+    /// use nerrs::NerTagger;
+    /// let mut tagger = NerTagger::new();
+    /// tagger.load_from_hub("roshan-research/hazm-ner", "ner.model").unwrap();
+    /// # }
+    /// ```
+    #[cfg(feature = "hf-hub")]
+    pub fn load_from_hub(&mut self, repo_id: &str, filename: &str) -> Result<()> {
+        use hf_hub::api::sync::Api;
+        let api = Api::new().map_err(|e| Error::Hub(e.to_string()))?;
+        let path = api.model(repo_id.to_string()).get(filename).map_err(|e| Error::Hub(e.to_string()))?;
+        self.load_model(path)
+    }
+
     /// Tags multiple sentences.
     pub fn tag_sents(&self, sents: &[Vec<&str>]) -> Result<Vec<TaggedSentence>> {
         sents.iter().map(|s| self.tag(s)).collect()
@@ -144,6 +166,57 @@ impl Default for NerTagger {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Converts a BIO-tagged sentence into a list of `(span_text, entity_type)` pairs.
+///
+/// Tokens tagged `O` are ignored.  Consecutive `B-X` / `I-X` tokens are merged
+/// into a single span joined by a space.
+///
+/// # Examples
+///
+/// ```
+/// use nerrs::extract_entities;
+///
+/// let tagged = vec![
+///     ("علی",    "B-PER"),
+///     ("به",     "O"),
+///     ("تهران",  "B-LOC"),
+///     ("رفت",    "O"),
+/// ];
+/// let entities = extract_entities(&tagged);
+/// assert_eq!(entities, vec![
+///     ("علی".to_string(),   "PER".to_string()),
+///     ("تهران".to_string(), "LOC".to_string()),
+/// ]);
+/// ```
+pub fn extract_entities(tagged: &[(&str, &str)]) -> Vec<(String, String)> {
+    let mut entities: Vec<(String, String)> = Vec::new();
+    let mut span: Vec<&str> = Vec::new();
+    let mut label = String::new();
+
+    for &(word, tag) in tagged {
+        if let Some(entity_type) = tag.strip_prefix("B-") {
+            if !span.is_empty() {
+                entities.push((span.join(" "), label.clone()));
+                span.clear();
+            }
+            label = entity_type.to_string();
+            span.push(word);
+        } else if tag.starts_with("I-") && !span.is_empty() {
+            span.push(word);
+        } else {
+            if !span.is_empty() {
+                entities.push((span.join(" "), label.clone()));
+                span.clear();
+                label.clear();
+            }
+        }
+    }
+    if !span.is_empty() {
+        entities.push((span.join(" "), label));
+    }
+    entities
 }
 
 fn collect_labels(corpus: &[Vec<(String, String)>]) -> Vec<String> {

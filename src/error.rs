@@ -9,6 +9,10 @@ pub enum Error {
     /// Error from the underlying CRF layer.
     #[error(transparent)]
     Crf(#[from] crfrs::Error),
+    /// Hugging Face Hub download failed.
+    #[cfg(feature = "hf-hub")]
+    #[error("Hugging Face Hub error: {0}")]
+    Hub(String),
 }
 
 /// Convenience alias.
